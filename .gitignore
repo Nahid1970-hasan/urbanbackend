@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Backend uploads & env
+uploads/*
+!uploads/.gitkeep
+.env
+
+# Local env overrides
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
