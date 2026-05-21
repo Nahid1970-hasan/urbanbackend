@@ -146,6 +146,22 @@ function rowCompany(row) {
   }
 }
 
+function rowClient(row) {
+  return {
+    client_id: row.client_id,
+    id: row.client_id,
+    name: row.name ?? '',
+    email: row.email ?? '',
+    phone: row.phone ?? '',
+    company: row.company ?? '',
+    address: row.address ?? '',
+    notes: row.notes ?? '',
+    status: (row.status ?? 'active').toLowerCase(),
+    created_at: fmtTs(row.created_at),
+    created_date: fmtTs(row.created_at),
+  }
+}
+
 export function createUploadRoot() {
   const useTmp =
     process.env.UPLOAD_TMP === '1' || process.env.VERCEL === '1'
@@ -1040,6 +1056,120 @@ export function createApiRouter(pool) {
         [id]
       )
       if (!r.affectedRows) return res.status(404).json({ detail: 'Company not found.' })
+      res.status(204).end()
+    })
+  )
+
+  router.get(
+    '/api/clientdashboard',
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      const [rows] = await pool.execute(
+        'SELECT * FROM clients ORDER BY created_at DESC'
+      )
+      res.json(rows.map(rowClient))
+    })
+  )
+
+  router.get(
+    '/api/clientall/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params.id, 10)
+      if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+      const [rows] = await pool.execute(
+        'SELECT * FROM clients WHERE client_id = ?',
+        [id]
+      )
+      if (!rows[0]) return res.status(404).json({ detail: 'Client not found.' })
+      res.json(rowClient(rows[0]))
+    })
+  )
+
+  router.post(
+    '/api/addclient',
+    requireAuth,
+    multipartNone,
+    asyncHandler(async (req, res) => {
+      const b = req.body || {}
+      const [r] = await pool.execute(
+        `INSERT INTO clients (name, email, phone, company, address, notes, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          String(b.name || ''),
+          String(b.email || ''),
+          String(b.phone || ''),
+          String(b.company || ''),
+          String(b.address || ''),
+          String(b.notes || ''),
+          String(b.status || 'active').toLowerCase(),
+        ]
+      )
+      const [rows] = await pool.execute(
+        'SELECT * FROM clients WHERE client_id = ?',
+        [r.insertId]
+      )
+      res.status(201).json(rowClient(rows[0]))
+    })
+  )
+
+  const handleUpdateClient = asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10)
+    if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+    const b = req.body || {}
+    const [existingRows] = await pool.execute(
+      'SELECT * FROM clients WHERE client_id = ?',
+      [id]
+    )
+    if (!existingRows[0]) return res.status(404).json({ detail: 'Client not found.' })
+    const ex = existingRows[0]
+    const mergeStr = (v, fb) =>
+      String(v !== undefined && v !== null ? v : fb ?? '')
+    await pool.execute(
+      `UPDATE clients SET name = ?, email = ?, phone = ?, company = ?, address = ?, notes = ?, status = ?
+       WHERE client_id = ?`,
+      [
+        mergeStr(b.name, ex.name),
+        mergeStr(b.email, ex.email),
+        mergeStr(b.phone, ex.phone),
+        mergeStr(b.company, ex.company),
+        mergeStr(b.address, ex.address),
+        mergeStr(b.notes, ex.notes),
+        String(b.status ?? ex.status ?? 'active').toLowerCase(),
+        id,
+      ]
+    )
+    const [rows] = await pool.execute(
+      'SELECT * FROM clients WHERE client_id = ?',
+      [id]
+    )
+    res.json(rowClient(rows[0]))
+  })
+
+  router.patch(
+    '/api/updateclient/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateClient
+  )
+  router.put(
+    '/api/updateclient/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateClient
+  )
+
+  router.delete(
+    '/api/deleteclient/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params.id, 10)
+      if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+      const [r] = await pool.execute(
+        'DELETE FROM clients WHERE client_id = ?',
+        [id]
+      )
+      if (!r.affectedRows) return res.status(404).json({ detail: 'Client not found.' })
       res.status(204).end()
     })
   )

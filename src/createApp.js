@@ -131,6 +131,13 @@ export async function createApp() {
         update: 'PATCH or PUT /api/update_project/:id',
         delete: 'DELETE /api/delete_project/:id',
       },
+      clients_api: {
+        dashboard_list: '/api/clientdashboard',
+        one: '/api/clientall/:id',
+        insert: 'POST /api/addclient',
+        update: 'PATCH or PUT /api/updateclient/:id',
+        delete: 'DELETE /api/deleteclient/:id',
+      },
     })
   })
 

@@ -12,6 +12,7 @@
 --                    updateInvoice, deleteInvoice
 --   companyinfo    → COMPANYINFO_LIST, companyinfoDetail, ADD_COMPANYINFO,
 --                    updateCompanyInfo, deleteCompanyInfo
+--   clients        → clientdashboard, clientall/:id, addclient, updateclient/:id, deleteclient/:id
 --   (filesystem)   → UPLOAD (JWT required; files under uploads/, URL /uploads/…)
 
 CREATE DATABASE IF NOT EXISTS urbanx CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -65,6 +66,21 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (contact_id),
   KEY idx_contacts_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS clients (
+  client_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL DEFAULT '',
+  email VARCHAR(190) NOT NULL DEFAULT '',
+  phone VARCHAR(64) NOT NULL DEFAULT '',
+  company VARCHAR(255) NOT NULL DEFAULT '',
+  address TEXT,
+  notes TEXT,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (client_id),
+  KEY idx_clients_created (created_at),
+  KEY idx_clients_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS invoices (
