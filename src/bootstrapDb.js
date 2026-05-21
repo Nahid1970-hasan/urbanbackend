@@ -25,6 +25,20 @@ async function ensureProjectsExtraColumns(conn) {
   }
 }
 
+async function ensureTeamMembersExtraColumns(conn) {
+  try {
+    await conn.query(
+      `ALTER TABLE team_members ADD COLUMN \`mem_photo\` VARCHAR(2048) NOT NULL DEFAULT ''`
+    )
+  } catch (e) {
+    const dup =
+      e.code === 'ER_DUP_FIELDNAME' ||
+      e.errno === 1060 ||
+      /Duplicate column name/i.test(String(e.sqlMessage || e.message || ''))
+    if (!dup) throw e
+  }
+}
+
 function findSchemaSqlPath() {
   const roots = [
     path.join(__dirname, '..'), // repo root (local)
@@ -138,6 +152,7 @@ export async function prepareDatabase() {
   }
 
   await ensureProjectsExtraColumns(conn)
+  await ensureTeamMembersExtraColumns(conn)
 
   await conn.end()
 

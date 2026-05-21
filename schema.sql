@@ -6,13 +6,16 @@
 --   projects       → PROJECTS_LIST, projectDetail, ADD_PROJECT, updateProject, deleteProject,
 --                    PROJECTS_PUBLIC_LIST (/api/projectdashboard, /api/project_public_dashboard)
 --                    fields: project_name, api_dashboard, public_api (+ project_link, details, …)
+--   team_members   → teammemberdashboard, teammember_public_dashboard, teammemberall/:id,
+--                    add_teammember, update_teammember/:id, delete_teammember/:id (+ mem_photo)
 --   blogs          → BLOGS_LIST, blogDetail, ADD_BLOG, updateBlog, deleteBlog
 --   contacts       → SAVE_CONTACTS, CONTACTS_LIST, deleteContact
 --   invoices       → INVOICES_LIST, invoiceDetail, invoiceGenerate, ADD_INVOICE,
 --                    updateInvoice, deleteInvoice
 --   companyinfo    → COMPANYINFO_LIST, companyinfoDetail, ADD_COMPANYINFO,
 --                    updateCompanyInfo, deleteCompanyInfo
---   clients        → clientdashboard, clientall/:id, addclient, updateclient/:id, deleteclient/:id
+--   clients        → clientdashboard, client_public_dashboard, clientall/:id,
+--                    add_client / addclient, update_client / updateclient, delete_client / deleteclient
 --   (filesystem)   → UPLOAD (JWT required; files under uploads/, URL /uploads/…)
 
 CREATE DATABASE IF NOT EXISTS urbanx CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -44,6 +47,21 @@ CREATE TABLE IF NOT EXISTS projects (
   status VARCHAR(32) NOT NULL DEFAULT 'incoming',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS team_members (
+  member_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  member_name VARCHAR(255) NOT NULL DEFAULT '',
+  mem_phone VARCHAR(64) NOT NULL DEFAULT '',
+  mem_designation VARCHAR(255) NOT NULL DEFAULT '',
+  mem_description TEXT,
+  mem_mail VARCHAR(190) NOT NULL DEFAULT '',
+  details TEXT,
+  mem_photo VARCHAR(2048) NOT NULL DEFAULT '',
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (member_id),
+  KEY idx_team_members_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS blogs (

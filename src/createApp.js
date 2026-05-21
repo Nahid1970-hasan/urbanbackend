@@ -133,10 +133,22 @@ export async function createApp() {
       },
       clients_api: {
         dashboard_list: '/api/clientdashboard',
+        public_list: '/api/client_public_dashboard',
         one: '/api/clientall/:id',
-        insert: 'POST /api/addclient',
-        update: 'PATCH or PUT /api/updateclient/:id',
-        delete: 'DELETE /api/deleteclient/:id',
+        insert:
+          'POST /api/add_client (same handler as POST /api/addclient)',
+        update:
+          'PATCH or PUT /api/update_client/:id (same as /api/updateclient/:id)',
+        delete:
+          'DELETE /api/delete_client/:id (same as /api/deleteclient/:id)',
+      },
+      team_members_api: {
+        dashboard_list: '/api/teammemberdashboard',
+        public_list: '/api/teammember_public_dashboard',
+        one: '/api/teammemberall/:id',
+        insert: 'POST /api/add_teammember',
+        update: 'PATCH or PUT /api/update_teammember/:id',
+        delete: 'DELETE /api/delete_teammember/:id',
       },
     })
   })

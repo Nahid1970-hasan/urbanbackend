@@ -76,6 +76,26 @@ function rowProject(row) {
   }
 }
 
+function rowTeamMember(row) {
+  const status = (row.status ?? 'active').toLowerCase()
+  return {
+    member_id: row.member_id,
+    id: row.member_id,
+    member_name: row.member_name ?? '',
+    mem_phone: row.mem_phone ?? '',
+    mem_designation: row.mem_designation ?? '',
+    mem_description: row.mem_description ?? '',
+    mem_mail: row.mem_mail ?? '',
+    details: row.details ?? '',
+    mem_photo: row.mem_photo ?? '',
+    img_url: row.mem_photo ?? '',
+    status,
+    member_status: status,
+    created_at: fmtTs(row.created_at),
+    created_date: fmtTs(row.created_at),
+  }
+}
+
 function rowBlog(row) {
   return {
     blog_id: row.blog_id,
@@ -147,16 +167,20 @@ function rowCompany(row) {
 }
 
 function rowClient(row) {
+  const status = (row.status ?? 'active').toLowerCase()
   return {
     client_id: row.client_id,
     id: row.client_id,
+    pk: row.client_id,
     name: row.name ?? '',
+    client_name: row.name ?? '',
     email: row.email ?? '',
     phone: row.phone ?? '',
     company: row.company ?? '',
     address: row.address ?? '',
     notes: row.notes ?? '',
-    status: (row.status ?? 'active').toLowerCase(),
+    status,
+    client_status: status,
     created_at: fmtTs(row.created_at),
     created_date: fmtTs(row.created_at),
   }
@@ -475,9 +499,15 @@ export function createApiRouter(pool) {
     asyncHandler(async (_req, res) => {
       const [[uc]] = await pool.execute('SELECT COUNT(*) AS n FROM users')
       const [[pc]] = await pool.execute('SELECT COUNT(*) AS n FROM projects')
+      const [[cc]] = await pool.execute('SELECT COUNT(*) AS n FROM clients')
+      const [[tc]] = await pool.execute(
+        'SELECT COUNT(*) AS n FROM team_members'
+      )
       res.json({
         users: uc.n,
         projects: pc.n,
+        clients: cc.n,
+        team_members: tc.n,
         results: [],
       })
     })
@@ -621,6 +651,138 @@ export function createApiRouter(pool) {
         [id]
       )
       if (!r.affectedRows) return res.status(404).json({ detail: 'Project not found.' })
+      res.status(204).end()
+    })
+  )
+
+  router.get(
+    '/api/teammemberdashboard',
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      const [rows] = await pool.execute(
+        'SELECT * FROM team_members ORDER BY created_at DESC'
+      )
+      res.json(rows.map(rowTeamMember))
+    })
+  )
+
+  router.get(
+    '/api/teammember_public_dashboard',
+    asyncHandler(async (_req, res) => {
+      const [rows] = await pool.execute(
+        'SELECT * FROM team_members ORDER BY created_at DESC'
+      )
+      res.json(rows.map(rowTeamMember))
+    })
+  )
+
+  router.get(
+    '/api/teammemberall/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params.id, 10)
+      if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+      const [rows] = await pool.execute(
+        'SELECT * FROM team_members WHERE member_id = ?',
+        [id]
+      )
+      if (!rows[0]) return res.status(404).json({ detail: 'Team member not found.' })
+      res.json(rowTeamMember(rows[0]))
+    })
+  )
+
+  router.post(
+    '/api/add_teammember',
+    requireAuth,
+    multipartNone,
+    asyncHandler(async (req, res) => {
+      const b = req.body || {}
+      const [r] = await pool.execute(
+        `INSERT INTO team_members (member_name, mem_phone, mem_designation, mem_description, mem_mail, details, mem_photo, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          String(b.member_name ?? ''),
+          String(b.mem_phone ?? b.phone ?? ''),
+          String(b.mem_designation ?? ''),
+          String(b.mem_description ?? ''),
+          String(b.mem_mail ?? b.email ?? ''),
+          String(b.details ?? ''),
+          String(b.mem_photo ?? b.img_url ?? b.photo ?? ''),
+          String(b.status ?? b.member_status ?? 'active').toLowerCase(),
+        ]
+      )
+      const [rows] = await pool.execute(
+        'SELECT * FROM team_members WHERE member_id = ?',
+        [r.insertId]
+      )
+      res.status(201).json(rowTeamMember(rows[0]))
+    })
+  )
+
+  const handleUpdateTeamMember = asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10)
+    if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+    const b = req.body || {}
+    const [existingRows] = await pool.execute(
+      'SELECT * FROM team_members WHERE member_id = ?',
+      [id]
+    )
+    if (!existingRows[0])
+      return res.status(404).json({ detail: 'Team member not found.' })
+    const ex = existingRows[0]
+    const mergeStr = (v, fb) =>
+      String(
+        v ??
+          fb ??
+          ''
+      )
+    await pool.execute(
+      `UPDATE team_members SET member_name = ?, mem_phone = ?, mem_designation = ?, mem_description = ?, mem_mail = ?, details = ?, mem_photo = ?, status = ?
+       WHERE member_id = ?`,
+      [
+        mergeStr(b.member_name, ex.member_name),
+        mergeStr(b.mem_phone ?? b.phone, ex.mem_phone),
+        mergeStr(b.mem_designation, ex.mem_designation),
+        mergeStr(b.mem_description, ex.mem_description),
+        mergeStr(b.mem_mail ?? b.email, ex.mem_mail),
+        mergeStr(b.details, ex.details),
+        mergeStr(b.mem_photo ?? b.img_url ?? b.photo, ex.mem_photo ?? ''),
+        String(b.status ?? b.member_status ?? ex.status ?? 'active').toLowerCase(),
+        id,
+      ]
+    )
+    const [rows] = await pool.execute(
+      'SELECT * FROM team_members WHERE member_id = ?',
+      [id]
+    )
+    res.json(rowTeamMember(rows[0]))
+  })
+
+  router.patch(
+    '/api/update_teammember/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateTeamMember
+  )
+  router.put(
+    '/api/update_teammember/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateTeamMember
+  )
+
+  router.delete(
+    '/api/delete_teammember/:id',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params.id, 10)
+      if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+      const [r] = await pool.execute(
+        'DELETE FROM team_members WHERE member_id = ?',
+        [id]
+      )
+      if (!r.affectedRows)
+        return res.status(404).json({ detail: 'Team member not found.' })
       res.status(204).end()
     })
   )
@@ -1072,6 +1234,16 @@ export function createApiRouter(pool) {
   )
 
   router.get(
+    '/api/client_public_dashboard',
+    asyncHandler(async (_req, res) => {
+      const [rows] = await pool.execute(
+        'SELECT * FROM clients ORDER BY created_at DESC'
+      )
+      res.json(rows.map(rowClient))
+    })
+  )
+
+  router.get(
     '/api/clientall/:id',
     requireAuth,
     asyncHandler(async (req, res) => {
@@ -1086,31 +1258,41 @@ export function createApiRouter(pool) {
     })
   )
 
+  const handleAddClient = asyncHandler(async (req, res) => {
+    const b = req.body || {}
+    const name = String(b.client_name ?? b.name ?? '').trim()
+    const email = String(b.client_email ?? b.email ?? '').trim()
+    const [r] = await pool.execute(
+      `INSERT INTO clients (name, email, phone, company, address, notes, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        email,
+        String(b.client_phone ?? b.phone ?? ''),
+        String(b.client_company ?? b.company ?? ''),
+        String(b.client_address ?? b.address ?? ''),
+        String(b.notes ?? ''),
+        String(b.client_status ?? b.status ?? 'active').toLowerCase(),
+      ]
+    )
+    const [rows] = await pool.execute(
+      'SELECT * FROM clients WHERE client_id = ?',
+      [r.insertId]
+    )
+    res.status(201).json(rowClient(rows[0]))
+  })
+
   router.post(
     '/api/addclient',
     requireAuth,
     multipartNone,
-    asyncHandler(async (req, res) => {
-      const b = req.body || {}
-      const [r] = await pool.execute(
-        `INSERT INTO clients (name, email, phone, company, address, notes, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          String(b.name || ''),
-          String(b.email || ''),
-          String(b.phone || ''),
-          String(b.company || ''),
-          String(b.address || ''),
-          String(b.notes || ''),
-          String(b.status || 'active').toLowerCase(),
-        ]
-      )
-      const [rows] = await pool.execute(
-        'SELECT * FROM clients WHERE client_id = ?',
-        [r.insertId]
-      )
-      res.status(201).json(rowClient(rows[0]))
-    })
+    handleAddClient
+  )
+  router.post(
+    '/api/add_client',
+    requireAuth,
+    multipartNone,
+    handleAddClient
   )
 
   const handleUpdateClient = asyncHandler(async (req, res) => {
@@ -1125,17 +1307,29 @@ export function createApiRouter(pool) {
     const ex = existingRows[0]
     const mergeStr = (v, fb) =>
       String(v !== undefined && v !== null ? v : fb ?? '')
+    const nameProvided =
+      b.client_name !== undefined || b.name !== undefined
+    const emailProvided =
+      b.client_email !== undefined || b.email !== undefined
+    const nextName = nameProvided
+      ? String(b.client_name ?? b.name ?? '').trim()
+      : String(ex.name ?? '')
+    const nextEmail = emailProvided
+      ? String(b.client_email ?? b.email ?? '').trim()
+      : String(ex.email ?? '')
     await pool.execute(
       `UPDATE clients SET name = ?, email = ?, phone = ?, company = ?, address = ?, notes = ?, status = ?
        WHERE client_id = ?`,
       [
-        mergeStr(b.name, ex.name),
-        mergeStr(b.email, ex.email),
-        mergeStr(b.phone, ex.phone),
-        mergeStr(b.company, ex.company),
-        mergeStr(b.address, ex.address),
+        nextName,
+        nextEmail,
+        mergeStr(b.client_phone ?? b.phone, ex.phone),
+        mergeStr(b.client_company ?? b.company, ex.company),
+        mergeStr(b.client_address ?? b.address, ex.address),
         mergeStr(b.notes, ex.notes),
-        String(b.status ?? ex.status ?? 'active').toLowerCase(),
+        String(
+          b.client_status ?? b.status ?? ex.status ?? 'active'
+        ).toLowerCase(),
         id,
       ]
     )
@@ -1158,21 +1352,32 @@ export function createApiRouter(pool) {
     multipartNone,
     handleUpdateClient
   )
-
-  router.delete(
-    '/api/deleteclient/:id',
+  router.patch(
+    '/api/update_client/:id',
     requireAuth,
-    asyncHandler(async (req, res) => {
-      const id = parseInt(req.params.id, 10)
-      if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
-      const [r] = await pool.execute(
-        'DELETE FROM clients WHERE client_id = ?',
-        [id]
-      )
-      if (!r.affectedRows) return res.status(404).json({ detail: 'Client not found.' })
-      res.status(204).end()
-    })
+    multipartNone,
+    handleUpdateClient
   )
+  router.put(
+    '/api/update_client/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateClient
+  )
+
+  const handleDeleteClient = asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10)
+    if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
+    const [r] = await pool.execute(
+      'DELETE FROM clients WHERE client_id = ?',
+      [id]
+    )
+    if (!r.affectedRows) return res.status(404).json({ detail: 'Client not found.' })
+    res.status(204).end()
+  })
+
+  router.delete('/api/deleteclient/:id', requireAuth, handleDeleteClient)
+  router.delete('/api/delete_client/:id', requireAuth, handleDeleteClient)
 
   router.post(
     '/api/upload',
