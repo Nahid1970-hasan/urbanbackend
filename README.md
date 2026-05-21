@@ -58,4 +58,41 @@ On first boot (unless `SKIP_DB_BOOTSTRAP=true`), **`schema.sql`** is applied and
 
 ## Frontend (separate project)
 
-Your React/Vercel SPA should point at this API via its own env (e.g. `VITE_API_BASE_URL=https://your-api.vercel.app`) — **that is not configured in this repository**.
+Your React/Vite SPA should call **this API’s origin**, not the Vite dev port.
+
+- **Wrong:** `http://127.0.0.1:5177/api/...` — `5177` is the **frontend** dev server. It does not run Express, so `/api` requests fail or show **`net::ERR_CONNECTION_RESET`** unless you add a proxy (below).
+- **Right:** `http://127.0.0.1:8000/api/...` (same host/port as this backend; set `PORT` in `.env` if different), **or** set `VITE_API_BASE_URL=http://127.0.0.1:8000` and use that as the base URL for `fetch` / axios.
+
+Example env in the **frontend** repo:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+### Optional: same-origin `/api` on port 5177 (Vite proxy)
+
+If you want relative URLs like `fetch('/api/add_project')` while Vite runs on `5177`, add a dev proxy so `/api` is forwarded to this server:
+
+```ts
+// vite.config.ts (frontend project)
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
+})
+```
+
+Restart `npm run dev` on the frontend after changing Vite config.
+
+This API is configured via its own env (e.g. `PUBLIC_BASE_URL`) — **not** via `VITE_*` in this repository.
+

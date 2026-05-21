@@ -47,6 +47,18 @@ function rowUser(row) {
   }
 }
 
+/** Dashboard row: user_id, username, email, role, active (from status). */
+function rowUserDashboard(row) {
+  const status = (row.status ?? 'active').toLowerCase()
+  return {
+    user_id: row.user_id,
+    username: row.username ?? '',
+    email: row.email ?? '',
+    role: row.role ?? 'admin',
+    active: status === 'active',
+  }
+}
+
 function rowProject(row) {
   return {
     project_id: row.project_id,
@@ -158,27 +170,60 @@ export function createApiRouter(pool) {
   const uploadFile = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } })
   const uploadNone = multer().none()
 
+  /** Skip multer for JSON/urlencoded; only parse multipart when Content-Type says so. */
+  const multipartNone = (req, res, next) => {
+    const ct = String(req.headers['content-type'] || '').toLowerCase()
+    if (ct.includes('multipart/form-data')) {
+      return uploadNone(req, res, (err) => {
+        if (err) {
+          err.statusCode = err.statusCode || 400
+          return next(err)
+        }
+        next()
+      })
+    }
+    next()
+  }
+
   router.get('/api/ping', (_req, res) => {
     res.json({
       ok: true,
       service: 'urban-api',
       login_post: '/api/users/login/',
+      logout_post: '/api/users/logout/',
     })
   })
 
   router.post(
     '/api/users/login',
     asyncHandler(async (req, res) => {
-      const { username, password } = req.body || {}
-      if (!username || !password) {
-        return res.status(400).json({ detail: 'Username and password are required.' })
+      const b = req.body && typeof req.body === 'object' ? req.body : {}
+      const login = String(
+        b.username ??
+          b.email ??
+          b.user ??
+          b.login ??
+          ''
+      ).trim()
+      const password = String(
+        b.password ?? b.pass ?? b.password1 ?? ''
+      ).trim()
+      if (!login || !password) {
+        return res.status(400).json({
+          detail:
+            'Username (or email) and password are required. Send JSON or form-urlencoded body.',
+        })
       }
       const [rows] = await pool.execute(
         'SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1',
-        [username, username]
+        [login, login]
       )
       const row = rows[0]
-      if (!row || !(await bcrypt.compare(password, row.password_hash))) {
+      const hash = row?.password_hash
+      const secretOk =
+        hash &&
+        (await bcrypt.compare(password, hash).catch(() => false))
+      if (!row || !secretOk) {
         return res.status(401).json({ detail: 'Invalid credentials.' })
       }
       const userRole = String(row.role || '').toLowerCase()
@@ -195,6 +240,19 @@ export function createApiRouter(pool) {
         access: token,
         user: rowUser(row),
         role: userRole,
+      })
+    })
+  )
+
+  router.post(
+    '/api/users/logout',
+    multipartNone,
+    asyncHandler(async (_req, res) => {
+      // Bearer JWT is stateless — no server-side session to destroy.
+      res.json({
+        ok: true,
+        detail:
+          'Logged out on the API side. Discard the bearer token locally (memory, cookie, storage).',
       })
     })
   )
@@ -243,6 +301,19 @@ export function createApiRouter(pool) {
         'SELECT * FROM users ORDER BY created_date DESC'
       )
       res.json(rows.map(rowUser))
+    })
+  )
+
+  router.get(
+    '/api/alluser',
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      const [rows] = await pool.execute(
+        `SELECT user_id, username, email, role, status
+         FROM users
+         ORDER BY created_date DESC`
+      )
+      res.json(rows.map(rowUserDashboard))
     })
   )
 
@@ -435,7 +506,7 @@ export function createApiRouter(pool) {
   router.post(
     '/api/add_project',
     requireAuth,
-    uploadNone,
+    multipartNone,
     asyncHandler(async (req, res) => {
       const b = req.body || {}
       const ad =
@@ -468,11 +539,7 @@ export function createApiRouter(pool) {
     })
   )
 
-  router.patch(
-    '/api/update_project/:id',
-    requireAuth,
-    uploadNone,
-    asyncHandler(async (req, res) => {
+  const handleUpdateProject = asyncHandler(async (req, res) => {
       const id = parseInt(req.params.id, 10)
       if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
       const b = req.body || {}
@@ -513,6 +580,18 @@ export function createApiRouter(pool) {
       )
       res.json(rowProject(rows[0]))
     })
+
+  router.patch(
+    '/api/update_project/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateProject
+  )
+  router.put(
+    '/api/update_project/:id',
+    requireAuth,
+    multipartNone,
+    handleUpdateProject
   )
 
   router.delete(
@@ -556,7 +635,7 @@ export function createApiRouter(pool) {
   router.post(
     '/api/add_blog',
     requireAuth,
-    uploadNone,
+    multipartNone,
     asyncHandler(async (req, res) => {
       const b = req.body || {}
       const [r] = await pool.execute(
@@ -582,7 +661,7 @@ export function createApiRouter(pool) {
   router.patch(
     '/api/update_blog/:id',
     requireAuth,
-    uploadNone,
+    multipartNone,
     asyncHandler(async (req, res) => {
       const id = parseInt(req.params.id, 10)
       if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })
@@ -890,7 +969,7 @@ export function createApiRouter(pool) {
   router.post(
     '/api/add_companyinfo',
     requireAuth,
-    uploadNone,
+    multipartNone,
     asyncHandler(async (req, res) => {
       const b = req.body || {}
       const [r] = await pool.execute(
@@ -917,7 +996,7 @@ export function createApiRouter(pool) {
   router.patch(
     '/api/update_companyinfo/:id',
     requireAuth,
-    uploadNone,
+    multipartNone,
     asyncHandler(async (req, res) => {
       const id = parseInt(req.params.id, 10)
       if (Number.isNaN(id)) return res.status(400).json({ detail: 'Invalid id.' })

@@ -8,10 +8,43 @@ import { prepareDatabase } from './bootstrapDb.js'
 import { stripTrailingSlash } from './middleware/stripTrailingSlash.js'
 import { createApiRouter, createUploadRoot } from './routes/api.js'
 
+async function resyncSeedAdminPassword(pool) {
+  const flag = String(process.env.RESYNC_ADMIN_PASSWORD || '').toLowerCase()
+  if (!['1', 'true', 'yes'].includes(flag)) return
+
+  const username = process.env.SEED_ADMIN_USERNAME || 'admin'
+  const email = process.env.SEED_ADMIN_EMAIL || 'admin@example.com'
+  const pwd =
+    process.env.SEED_ADMIN_PASSWORD === undefined
+      ? 'admin'
+      : process.env.SEED_ADMIN_PASSWORD
+  const hash = await bcrypt.hash(String(pwd), 10)
+
+  let [r] = await pool.execute(
+    'UPDATE users SET password_hash = ? WHERE username = ?',
+    [hash, username]
+  )
+  if (!r.affectedRows) {
+    ;[r] = await pool.execute(
+      'UPDATE users SET password_hash = ? WHERE email = ?',
+      [hash, email]
+    )
+  }
+  if (r.affectedRows) {
+    console.info(
+      `RESYNC_ADMIN_PASSWORD: password updated for "${username}" (matched by username or email)`
+    )
+  } else {
+    console.warn(
+      'RESYNC_ADMIN_PASSWORD: no matching user — rely on first-time seed or create the user first'
+    )
+  }
+}
+
 async function seedAdminIfEmpty(pool) {
   const [[row]] = await pool.execute('SELECT COUNT(*) AS n FROM users')
   if (row.n > 0) return
-  const pwd = process.env.SEED_ADMIN_PASSWORD || 'admin123'
+  const pwd = process.env.SEED_ADMIN_PASSWORD || 'admin'
   const hash = await bcrypt.hash(pwd, 10)
   const username = process.env.SEED_ADMIN_USERNAME || 'admin'
   const email = process.env.SEED_ADMIN_EMAIL || 'admin@example.com'
@@ -30,6 +63,7 @@ export async function createApp() {
   await prepareDatabase()
   const pool = createPool()
   await seedAdminIfEmpty(pool)
+  await resyncSeedAdminPassword(pool)
 
   const uploadRoot = createUploadRoot()
   fs.mkdirSync(uploadRoot, { recursive: true })
@@ -69,6 +103,7 @@ export async function createApp() {
   )
 
   app.use(express.json({ limit: '2mb' }))
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }))
   app.use('/uploads', express.static(uploadRoot))
 
   app.get('/', (_req, res) => {
@@ -77,6 +112,7 @@ export async function createApp() {
       service: 'urban-api',
       ping: '/api/ping',
       login: '/api/users/login/',
+      logout: 'POST /api/users/logout',
       projects_table: [
         'project_name',
         'api_dashboard',
@@ -92,7 +128,7 @@ export async function createApp() {
         public_list: '/api/project_public_dashboard',
         one: '/api/projectall/:id',
         insert: 'POST /api/add_project',
-        update: 'PATCH /api/update_project/:id',
+        update: 'PATCH or PUT /api/update_project/:id',
         delete: 'DELETE /api/delete_project/:id',
       },
     })
